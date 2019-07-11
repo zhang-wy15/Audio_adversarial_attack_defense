@@ -133,23 +133,12 @@ class Attack(nn.Module):
                 #print(decode_out, targets)
 
             for ii in range(self.batch_size):
-                # Every 10 iterations, check if we've succeeded
-                # if we have (or if it's the final epoch) then we
-                # should record our progress and decrease the
-                # rescale constant.
                 if ((i+1)%10 == 0 and decode_out[ii] == [targets[ii].upper()]) or (i==MAX-1 and self.final_deltas[ii] is None):
-                    # If we're already below the threshold, then
-                    # just reduce the threshold to the current
-                    # point and save some time.
                     bound_tmp = torch.max(torch.abs(self.delta1[ii])).item()
                     if self.rescale[ii][0] * 2000 > bound_tmp:
                         print("It's way over", bound_tmp / 2000.0)
                         self.rescale[ii][0] = bound_tmp / 2000.0
-                    
-                    # Otherwise reduce it by some constant. The closer
-                    # this number is to 1, the better quality the result
-                    # will be. The smaller, the quicker we'll converge
-                    # on a result but it will be lower quality.
+                        
                     self.rescale[ii][0] *= .8
 
                     # Adjust the best solution found so far
@@ -187,7 +176,6 @@ class Attack(nn.Module):
 
         MAX = self.num_iterations2
         model.train()
-        deltas = []
         loss_th = [np.inf] *self.batch_size
         for i in range(MAX):
             # print out some debug information every 10 iterations
@@ -224,17 +212,13 @@ class Attack(nn.Module):
             for ii in range(self.batch_size):
                 self.delta2.grad[ii] = self.alpha[ii] * torch.sign(self.delta2.grad[ii])
             
-            grad = np.sum(self.delta2.grad.cpu().numpy())
-            if grad != grad:
-                print("NaN")
+            #grad = np.sum(self.delta2.grad.cpu().numpy())
+            #if grad != grad:
+            #    print("NaN")
             
             self.optim22.step()
 
             apply_delta_ = torch.clamp(self.delta2, -2000, 2000) * self.rescale
-            deltas.append(apply_delta_.cpu().detach().numpy())
-            if 2000. in deltas[i] or -2000. in deltas[i]:
-                print("True")
-                #break 
 
             print('loss: ', loss_value_1, loss_value_2)
 
@@ -242,29 +226,22 @@ class Attack(nn.Module):
                 param_groups = self.optim21.param_groups
                 for g in param_groups:
                     g['lr'] = 0.1
-            if i+1 == 3200:
-                param_groups = self.optim21.param_groups
-                for g in param_groups:
-                    g['lr'] = 0.01
-
-            if i+1 == 2000:
                 param_groups = self.optim22.param_groups
                 for g in param_groups:
                     g['lr'] = 0.1
             if i+1 == 3200:
+                param_groups = self.optim21.param_groups
+                for g in param_groups:
+                    g['lr'] = 0.01
                 param_groups = self.optim22.param_groups
                 for g in param_groups:
                     g['lr'] = 0.01
-
+            
             if (i+1)%10 == 0:
                 decode_out, _ = self.decoder.decode(logits, logits_sizes)
                 print(i+1, decode_out[0], [target[0]])
 
             for ii in range(self.batch_size):
-                # Every 10 iterations, check if we've succeeded
-                # if we have (or if it's the final epoch) then we
-                # should record our progress and decrease the
-                # rescale constant.
                 if ((i+1)%50 == 0 and decode_out[ii] == [target[ii].upper()]) or (i==MAX-1 and self.final_deltas[ii] is None):
                     self.alpha[ii] = 1.2 * self.alpha[ii]
                     if self.alpha[ii] > 1000:
